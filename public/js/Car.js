@@ -123,65 +123,97 @@ Car.prototype.doPhysics = function( dt )
 	// Shorthand
 	var cfg = this.config;
 
+	this.stats.clear();  // clear this every tick otherwise it'll fill up fast
+
 	// Pre-calc heading vector
 	var sn = Math.sin(this.heading);
 	var cs = Math.cos(this.heading);
+	this.stats.add('sn', sn);
+	this.stats.add('cs', cs);
 
 	// Get velocity in local car coordinates
 	this.velocity_c.x = cs * this.velocity.x + sn * this.velocity.y;
 	this.velocity_c.y = cs * this.velocity.y - sn * this.velocity.x;
+	this.stats.add('this.velocity_c.x', this.velocity_c.x);
+	this.stats.add('this.velocity_c.y', this.velocity_c.y);
 
 	// Weight on axles based on centre of gravity and weight shift due to forward/reverse acceleration
 	var axleWeightFront = cfg.mass * (this.axleWeightRatioFront * cfg.gravity - cfg.weightTransfer * this.accel_c.x * cfg.cgHeight / this.wheelBase);
 	var axleWeightRear = cfg.mass * (this.axleWeightRatioRear * cfg.gravity + cfg.weightTransfer * this.accel_c.x * cfg.cgHeight / this.wheelBase);
+	this.stats.add('axleWeightFront', axleWeightFront);
+	this.stats.add('axleWeightRear', axleWeightRear);
 
 	// Resulting velocity of the wheels as result of the yaw rate of the car body.
 	// v = yawrate * r where r is distance from axle to CG and yawRate (angular velocity) in rad/s.
 	var yawSpeedFront = cfg.cgToFrontAxle * this.yawRate;
 	var yawSpeedRear = -cfg.cgToRearAxle * this.yawRate;
+	this.stats.add('yawSpeedFront', yawSpeedFront);
+	this.stats.add('yawSpeedRear', yawSpeedRear);
 
 	// Calculate slip angles for front and rear wheels (a.k.a. alpha)
 	var slipAngleFront = Math.atan2(this.velocity_c.y + yawSpeedFront, Math.abs(this.velocity_c.x)) - GMath.sign(this.velocity_c.x) * this.steerAngle;
 	var slipAngleRear  = Math.atan2(this.velocity_c.y + yawSpeedRear,  Math.abs(this.velocity_c.x));
+	this.stats.add('slipAngleFront', slipAngleFront);
+	this.stats.add('slipAngleRear', slipAngleRear);
 
 	var tireGripFront = cfg.tireGrip;
 	var tireGripRear = cfg.tireGrip * (1.0 - this.inputs.ebrake * (1.0 - cfg.lockGrip)); // reduce rear grip when ebrake is on
+	this.stats.add('tireGripFront', tireGripFront);
+	this.stats.add('tireGripRear', tireGripRear);
 
 	var frictionForceFront_cy = GMath.clamp(-cfg.cornerStiffnessFront * slipAngleFront, -tireGripFront, tireGripFront) * axleWeightFront;
 	var frictionForceRear_cy = GMath.clamp(-cfg.cornerStiffnessRear * slipAngleRear, -tireGripRear, tireGripRear) * axleWeightRear;
+	this.stats.add('frictionForceFront_cy', frictionForceFront_cy);
+	this.stats.add('frictionForceRear_cy', frictionForceRear_cy);
 
 	//  Get amount of brake/throttle from our inputs
 	var brake = Math.min(this.inputs.brake * cfg.brakeForce + this.inputs.ebrake * cfg.eBrakeForce, cfg.brakeForce);
 	var throttle = this.inputs.throttle * cfg.engineForce;
-
+	this.stats.add('brake', brake);
+	this.stats.add('throttle', throttle);
+	
 	//  Resulting force in local car coordinates.
 	//  This is implemented as a RWD car only.
 	var tractionForce_cx = throttle - brake * GMath.sign(this.velocity_c.x);
 	var tractionForce_cy = 0;
+	this.stats.add('tractionForce_cx', tractionForce_cx);
+	this.stats.add('tractionForce_cy', tractionForce_cy);
 
 	var dragForce_cx = -cfg.rollResist * this.velocity_c.x - cfg.airResist * this.velocity_c.x * Math.abs(this.velocity_c.x);
 	var dragForce_cy = -cfg.rollResist * this.velocity_c.y - cfg.airResist * this.velocity_c.y * Math.abs(this.velocity_c.y);
+	this.stats.add('dragForce_cx', dragForce_cx);
+	this.stats.add('dragForce_cy', dragForce_cy);
 
 	// total force in car coordinates
 	var totalForce_cx = dragForce_cx + tractionForce_cx;
 	var totalForce_cy = dragForce_cy + tractionForce_cy + Math.cos(this.steerAngle) * frictionForceFront_cy + frictionForceRear_cy;
+	this.stats.add('totalForce_cx', totalForce_cx);
+	this.stats.add('totalForce_cy', totalForce_cy);
 
 	// acceleration along car axes
 	this.accel_c.x = totalForce_cx / cfg.mass;  // forward/reverse accel
 	this.accel_c.y = totalForce_cy / cfg.mass;  // sideways accel
+	this.stats.add('this.accel_c.x', this.accel_c.x);
+	this.stats.add('this.accel_c.y', this.accel_c.y);
 
 	// acceleration in world coordinates
 	this.accel.x = cs * this.accel_c.x - sn * this.accel_c.y;
 	this.accel.y = sn * this.accel_c.x + cs * this.accel_c.y;
+	this.stats.add('this.accel.x', this.accel.x);
+	this.stats.add('this.accel.y', this.accel.y);
 
 	// update velocity
 	this.velocity.x += this.accel.x * dt;
 	this.velocity.y += this.accel.y * dt;
+	this.stats.add('this.velocity.x', this.velocity.x);
+	this.stats.add('this.velocity.y', this.velocity.y);
 
 	this.absVel = this.velocity.len();
+	this.stats.add('this.absVel', this.absVel);
 
 	// calculate rotational forces
 	var angularTorque = (frictionForceFront_cy + tractionForce_cy) * cfg.cgToFrontAxle - frictionForceRear_cy * cfg.cgToRearAxle;
+	this.stats.add('angularTorque', angularTorque);
 
 	//  Sim gets unstable at very slow speeds, so just stop the car
 	if( Math.abs(this.absVel) < 0.5 && !throttle )
@@ -191,25 +223,22 @@ Car.prototype.doPhysics = function( dt )
 	}
 
 	var angularAccel = angularTorque / this.inertia;
+	this.stats.add('angularAccel', angularAccel);
 
 	this.yawRate += angularAccel * dt;
 	this.heading += this.yawRate * dt;
+	this.stats.add('this.yawRate', this.yawRate);
+	this.stats.add('this.heading', this.heading);
 
 	//  finally we can update position
 	this.position.x += this.velocity.x * dt;
 	this.position.y += this.velocity.y * dt;
+	this.stats.add('this.position.x', this.position.x * 25);
+	this.stats.add('this.position.y', this.position.y * 25);
 
 	//  Display some data
-	this.stats.clear();  // clear this every tick otherwise it'll fill up fast
-	this.stats.add('speed', this.velocity_c.x * 3600 / 1000 );  // km/h
-	this.stats.add('accleration', this.accel_c.x);
-	this.stats.add('yawRate', this.yawRate);
-	this.stats.add('weightFront', axleWeightFront);
-	this.stats.add('weightRear', axleWeightRear);
-	this.stats.add('slipAngleFront', slipAngleFront);
-	this.stats.add('slipAngleRear', slipAngleRear);
-	this.stats.add('frictionFront', frictionForceFront_cy);
-	this.stats.add('frictionRear', frictionForceRear_cy);
+	
+	
 };
 
 /**
